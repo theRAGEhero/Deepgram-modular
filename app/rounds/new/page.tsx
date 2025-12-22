@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { CreateRoundForm } from '@/components/rounds/CreateRoundForm'
 import { AudioRecorder } from '@/components/recording/AudioRecorder'
 import { FileUploader } from '@/components/upload/FileUploader'
@@ -148,6 +149,37 @@ export default function NewRoundPage() {
         {/* Step 2: Audio Input */}
         {currentStep === 'audio' && !isProcessing && (
           <div className="space-y-6">
+            {roundId && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Share This Round</CardTitle>
+                  <CardDescription>
+                    Scan to open this round on another device
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex items-center justify-between gap-6 flex-wrap">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Round link:
+                    </p>
+                    <Link
+                      href={`/rounds/${roundId}`}
+                      className="text-sm font-medium text-primary underline underline-offset-4"
+                    >
+                      /rounds/{roundId}
+                    </Link>
+                  </div>
+                  <div className="rounded-md border bg-background p-2">
+                    <img
+                      src={`/api/rounds/${roundId}/qr`}
+                      alt="QR code for this round"
+                      className="h-40 w-40"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="flex items-center justify-center space-x-4 mb-8">
               <Button
                 variant={audioSource === 'record' ? 'default' : 'outline'}
@@ -165,7 +197,11 @@ export default function NewRoundPage() {
             </div>
 
             {audioSource === 'record' && (
-              <AudioRecorder onRecordingComplete={handleRecordingComplete} />
+              <AudioRecorder
+                onRecordingComplete={handleRecordingComplete}
+                roundId={roundId || ''}
+                disabled={!roundId}
+              />
             )}
 
             {audioSource === 'upload' && (

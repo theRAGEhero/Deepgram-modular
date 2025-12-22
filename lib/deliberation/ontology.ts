@@ -24,12 +24,14 @@ import { formatTimestamp, cleanFilename } from './formatter';
  */
 export function createDeliberationOntology(
   responseDict: any,
-  audioFilename: string
+  audioFilename: string,
+  language?: string
 ): DeliberationOntology {
   // Extract basic data from Deepgram response
   const transcriptData = responseDict.results?.channels?.[0]?.alternatives?.[0];
   const words: DeepgramWord[] = transcriptData?.words ?? [];
   const metadata = responseDict.metadata ?? {};
+  const resolvedLanguage = language ?? metadata.language ?? "en";
 
   // Group words into contributions by speaker
   const contributions = groupWordsBySpeaker(words);
@@ -68,7 +70,7 @@ export function createDeliberationOntology(
       duration: formatTimestamp(totalDuration),
       transcription_metadata: {
         model: metadata.model ?? "nova-2",
-        language: "en",
+        language: resolvedLanguage,
         confidence: transcriptData?.confidence ?? 0,
         processed_at: new Date().toISOString(),
         word_count: words.length,

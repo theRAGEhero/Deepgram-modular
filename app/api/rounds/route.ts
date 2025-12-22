@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getRounds, createRound } from '@/lib/storage/rounds';
 import { Round, RoundStatus } from '@/types/round';
 import { getLogger, createRequestId } from '@/lib/logging/logger';
+import { DEFAULT_DEEPGRAM_LANGUAGE, isDeepgramLanguage } from '@/lib/deepgram/languages';
 
 const logger = getLogger('api.rounds');
 
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, description } = body;
+    const { name, description, language } = body;
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       log.warn('Invalid round name provided', { name });
@@ -46,12 +47,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const normalizedLanguage = typeof language === 'string' && language.trim().length > 0
+      ? language.trim()
+      : DEFAULT_DEEPGRAM_LANGUAGE;
+
+    if (!isDeepgramLanguage(normalizedLanguage)) {
+      log.warn('Invalid language provided', { language: normalizedLanguage });
+      return NextResponse.json(
+        { error: 'Language is not supported' },
+        { status: 400 }
+      );
+    }
+
     const round: Round = {
       id: uuidv4(),
       name: name.trim(),
       description: description?.trim() || undefined,
       created_at: new Date().toISOString(),
-      status: RoundStatus.CREATED
+      status: RoundStatus.CREATED,
+      language: normalizedLanguage
     };
 
     log.info('Creating new round', { roundId: round.id, name: round.name });

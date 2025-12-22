@@ -6,6 +6,10 @@ import Link from 'next/link'
 import { ArrowLeft, Trash2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { AudioRecorder } from '@/components/recording/AudioRecorder'
+import { FileUploader } from '@/components/upload/FileUploader'
+import { Progress } from '@/components/ui/progress'
 import { TranscriptionDisplay } from '@/components/transcription/TranscriptionDisplay'
 import { Round, RoundStatus } from '@/types/round'
 import { DeliberationOntology } from '@/types/deliberation'
@@ -16,6 +20,11 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
   const [transcription, setTranscription] = useState<DeliberationOntology | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [processError, setProcessError] = useState<string | null>(null)
+  const [audioSource, setAudioSource] = useState<'record' | 'upload' | null>(null)
+  const [audioFile, setAudioFile] = useState<File | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [processingProgress, setProcessingProgress] = useState(0)
 
   const fetchRoundData = async () => {
     setIsLoading(true)
@@ -70,6 +79,84 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
     } catch (err) {
       const error = err as Error
       alert(`Error: ${error.message}`)
+    }
+  }
+
+  const handleRecordingComplete = (audioBlob: Blob, duration: number) => {
+    const file = new File(
+      [audioBlob],
+      `recording_${Date.now()}.webm`,
+      { type: 'audio/webm' }
+    )
+    setAudioFile(file)
+    processAudio(file, duration)
+  }
+
+  const handleFileSelect = (file: File) => {
+    setAudioFile(file)
+  }
+
+  const handleProcessUpload = () => {
+    if (audioFile) {
+      processAudio(audioFile)
+    }
+  }
+
+  const processAudio = async (file: File, duration?: number) => {
+    if (!round) return
+
+    setIsProcessing(true)
+    setProcessError(null)
+    setProcessingProgress(0)
+
+    try {
+      await fetch(`/api/rounds/${round.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: RoundStatus.PROCESSING })
+      })
+
+      setRound({ ...round, status: RoundStatus.PROCESSING })
+      setProcessingProgress(20)
+
+      const formData = new FormData()
+      formData.append('audio', file)
+      formData.append('roundId', round.id)
+      if (duration) {
+        formData.append('duration', duration.toString())
+      }
+
+      setProcessingProgress(40)
+
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData
+      })
+
+      setProcessingProgress(80)
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Transcription failed')
+      }
+
+      await response.json()
+
+      setProcessingProgress(100)
+      await fetchRoundData()
+    } catch (err) {
+      const error = err as Error
+      setProcessError(error.message)
+      setIsProcessing(false)
+
+      await fetch(`/api/rounds/${round.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: RoundStatus.ERROR })
+      })
+      setRound({ ...round, status: RoundStatus.ERROR })
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -160,7 +247,7 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
               Back to Rounds
             </Button>
           </Link>
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex-1 min-w-0">
               <div className="flex items-center space-x-3 mb-2">
                 <h1 className="text-4xl font-bold">{round.name}</h1>
@@ -177,18 +264,39 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
                 Created {formatDate(round.created_at)}
               </p>
             </div>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </Button>
+            <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start">
+              <Card className="w-full max-w-[260px]">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Round QR</CardTitle>
+                  <CardDescription>Open on another device</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center gap-3">
+                  <img
+                    src={`/api/rounds/${round.id}/qr`}
+                    alt="QR code for this round"
+                    className="h-40 w-40"
+                  />
+                  <Link
+                    href={`/rounds/${round.id}`}
+                    className="text-xs font-medium text-primary underline underline-offset-4"
+                  >
+                    /rounds/{round.id}
+                  </Link>
+                </CardContent>
+              </Card>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
+            </div>
           </div>
         </div>
 
         {/* Status Messages */}
-        {round.status === RoundStatus.PROCESSING && (
+        {(round.status === RoundStatus.PROCESSING || isProcessing) && (
           <div className="rounded-md bg-blue-500/10 p-4 text-sm text-blue-700 dark:text-blue-400 mb-6">
             <div className="flex items-center space-x-2">
               <RefreshCw className="h-4 w-4 animate-spin" />
@@ -206,6 +314,65 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
         {round.status === RoundStatus.CREATED && (
           <div className="rounded-md bg-yellow-500/10 p-4 text-sm text-yellow-700 dark:text-yellow-400 mb-6">
             This round has been created but no audio has been added yet.
+          </div>
+        )}
+
+        {(round.status === RoundStatus.CREATED || round.status === RoundStatus.ERROR) && !isProcessing && (
+          <div className="space-y-6 mb-8">
+            <div className="flex items-center justify-center space-x-4">
+              <Button
+                variant={audioSource === 'record' ? 'default' : 'outline'}
+                onClick={() => setAudioSource('record')}
+              >
+                Record Audio
+              </Button>
+              <span className="text-muted-foreground">or</span>
+              <Button
+                variant={audioSource === 'upload' ? 'default' : 'outline'}
+                onClick={() => setAudioSource('upload')}
+              >
+                Upload File
+              </Button>
+            </div>
+
+            {audioSource === 'record' && (
+              <AudioRecorder
+                onRecordingComplete={handleRecordingComplete}
+                roundId={round.id}
+              />
+            )}
+
+            {audioSource === 'upload' && (
+              <div className="space-y-4">
+                <FileUploader onFileSelect={handleFileSelect} />
+                {audioFile && (
+                  <Button
+                    onClick={handleProcessUpload}
+                    className="w-full"
+                    size="lg"
+                  >
+                    Process Audio
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {processError && (
+              <div className="rounded-md bg-destructive/10 p-4 text-sm text-destructive">
+                {processError}
+              </div>
+            )}
+          </div>
+        )}
+
+        {isProcessing && (
+          <div className="space-y-4 mb-8">
+            <div className="max-w-md">
+              <Progress value={processingProgress} max={100} />
+              <p className="text-sm text-muted-foreground mt-2">
+                {processingProgress}% complete
+              </p>
+            </div>
           </div>
         )}
 
