@@ -6,6 +6,7 @@ export interface Round {
   description?: string;
   created_at: string;
   status: RoundStatus;
+  language?: string;
   audio_file?: string;
   transcription_file?: string;
   duration_seconds?: number;
@@ -15,6 +16,7 @@ export interface Round {
 export enum RoundStatus {
   CREATED = "created",
   RECORDING = "recording",
+  STREAMING = "streaming",
   PROCESSING = "processing",
   COMPLETED = "completed",
   ERROR = "error"
@@ -23,4 +25,5 @@ export enum RoundStatus {
 export interface CreateRoundInput {
   name: string;
   description?: string;
+  language?: string;
 }

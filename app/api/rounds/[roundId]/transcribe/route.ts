@@ -1,57 +1,79 @@
 /**
- * Transcription API Route
- * Accepts audio file, sends to Deepgram, returns Deliberation Ontology JSON
- * Ported from Podfree-Editor: deepgram_transcribe_debates.py lines 338-448
+ * Round-specific Transcription API Route
+ * Triggers transcription for an assembled audio file from WebSocket streaming
+ * Reads audio from public/audio/{roundId}.{ext} and processes via Deepgram
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@deepgram/sdk';
 import { createDeliberationOntology } from '@/lib/deliberation/ontology';
-import { saveTranscription } from '@/lib/storage/files';
+import { saveTranscription, audioFileExists } from '@/lib/storage/files';
 import { getRound, updateRound } from '@/lib/storage/rounds';
 import { RoundStatus } from '@/types/round';
 import { getLogger, createRequestId } from '@/lib/logging/logger';
+import fs from 'fs/promises';
+import path from 'path';
 
-const logger = getLogger('api.transcribe');
+const logger = getLogger('api.rounds.transcribe');
 
-export const runtime = 'nodejs'; // Required for file system operations
+export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes timeout for large files
 
-export async function POST(request: NextRequest) {
-  // Create request-scoped logger
+interface RouteContext {
+  params: {
+    roundId: string;
+  };
+}
+
+export async function POST(
+  request: NextRequest,
+  context: RouteContext
+) {
   const requestId = createRequestId();
   const log = logger.withContext({ requestId });
 
+  const { roundId } = context.params;
+  const roundLog = log.withContext({ roundId });
+
   try {
-    const formData = await request.formData();
-    const audioFile = formData.get('audio') as File;
-    const roundId = formData.get('roundId') as string;
-    const filename = formData.get('filename') as string || audioFile?.name || 'audio';
-
-    // Add roundId to logger context
-    const roundLog = log.withContext({ roundId });
-
-    if (!audioFile) {
-      roundLog.warn('No audio file provided in request');
-      return NextResponse.json(
-        { error: 'No audio file provided' },
-        { status: 400 }
-      );
-    }
-
-    if (!roundId) {
-      log.warn('No round ID provided in request');
-      return NextResponse.json(
-        { error: 'Round ID is required' },
-        { status: 400 }
-      );
-    }
-
+    // Validate round exists
     const round = await getRound(roundId);
-    const language = round?.language || 'en';
+    if (!round) {
+      roundLog.warn('Round not found');
+      return NextResponse.json(
+        { error: 'Round not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check if audio file exists
+    const audioPath = await audioFileExists(roundId);
+    if (!audioPath) {
+      roundLog.warn('Audio file not found for round');
+      return NextResponse.json(
+        { error: 'Audio file not found. Recording may not have completed yet.' },
+        { status: 404 }
+      );
+    }
+
+    roundLog.info('Found audio file', { audioPath });
 
     // Update round status to processing
     await updateRound(roundId, { status: RoundStatus.PROCESSING });
+    const language = round.language || 'en';
+
+    // Read audio file from disk
+    const fullPath = path.join(process.cwd(), 'public', audioPath);
+    const buffer = await fs.readFile(fullPath);
+    const extension = path.extname(audioPath).slice(1);
+    const mimeType = extension === 'webm' ? 'audio/webm' : `audio/${extension}`;
+
+    roundLog.info('Starting Deepgram transcription', {
+      fileSize: buffer.length,
+      mimeType,
+      extension,
+      language
+    });
 
     // Initialize Deepgram client
     const apiKey = process.env.DEEPGRAM_API_KEY;
@@ -61,29 +83,17 @@ export async function POST(request: NextRequest) {
 
     const deepgram = createClient(apiKey);
 
-    // Convert File to Buffer
-    const arrayBuffer = await audioFile.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    roundLog.info('Starting Deepgram transcription', {
-      filename,
-      fileSize: audioFile.size,
-      mimeType: audioFile.type,
-      language
-    });
-
     // Call Deepgram API with diarization enabled
-    // Configuration matches Podfree-Editor: lines 360-384
     const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
       buffer,
       {
-        model: 'nova-2',        // Latest Deepgram model
-        language,               // Selected transcription language
-        diarize: true,          // ← Critical: Enable speaker identification
-        punctuate: true,        // Add punctuation automatically
-        paragraphs: true,       // Detect paragraph breaks
-        utterances: true,       // Detect utterances/sentence boundaries
-        smart_format: true,     // Format numbers, currency, etc.
+        model: 'nova-2',
+        language,
+        diarize: true,
+        punctuate: true,
+        paragraphs: true,
+        utterances: true,
+        smart_format: true,
       }
     );
 
@@ -101,11 +111,9 @@ export async function POST(request: NextRequest) {
       throw new Error('Deepgram API returned null result');
     }
 
-    // Debug: Log what result looks like before serialization
     roundLog.debug('Raw result from Deepgram', {
       resultType: typeof result,
       resultKeys: result ? Object.keys(result) : [],
-      resultConstructor: result?.constructor?.name,
       hasResults: !!result?.results
     });
 
@@ -113,14 +121,6 @@ export async function POST(request: NextRequest) {
 
     // Convert response to plain object
     const responseDict = JSON.parse(JSON.stringify(result));
-
-    // Debug: Log response structure after serialization
-    roundLog.debug('Deepgram response after serialization', {
-      responseDictType: typeof responseDict,
-      responseDictIsNull: responseDict === null,
-      hasResults: !!responseDict?.results,
-      responsePreview: JSON.stringify(responseDict).substring(0, 200)
-    });
 
     // Validate response structure
     if (!responseDict || !responseDict.results) {
@@ -132,6 +132,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create Deliberation Ontology format
+    const filename = path.basename(audioPath);
     const deliberationData = createDeliberationOntology(responseDict, filename, language);
 
     // Save both raw and deliberation JSON files
@@ -145,6 +146,7 @@ export async function POST(request: NextRequest) {
     // Update round with completion status and metadata
     await updateRound(roundId, {
       status: RoundStatus.COMPLETED,
+      audio_file: audioPath,
       transcription_file: `${roundId}_deliberation.json`,
       duration_seconds: deliberationData.statistics.duration_seconds,
       speaker_count: deliberationData.statistics.total_speakers
@@ -158,18 +160,14 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    log.error('Transcription error occurred', { error });
+    roundLog.error('Transcription error occurred', { error });
 
-    // Try to update round status to error if we have roundId
+    // Update round status to error
     try {
-      const formData = await request.clone().formData();
-      const roundId = formData.get('roundId') as string;
-      if (roundId) {
-        await updateRound(roundId, { status: RoundStatus.ERROR });
-        log.info('Updated round status to ERROR', { roundId });
-      }
+      await updateRound(roundId, { status: RoundStatus.ERROR });
+      roundLog.info('Updated round status to ERROR');
     } catch (updateError) {
-      log.warn('Failed to update round status', { error: updateError });
+      roundLog.warn('Failed to update round status', { error: updateError });
     }
 
     return NextResponse.json(

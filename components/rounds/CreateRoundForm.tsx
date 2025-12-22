@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { DEFAULT_DEEPGRAM_LANGUAGE, DEEPGRAM_LANGUAGE_OPTIONS } from '@/lib/deepgram/languages'
 
 interface CreateRoundFormProps {
   onSuccess?: (roundId: string) => void
@@ -14,6 +15,7 @@ export function CreateRoundForm({ onSuccess }: CreateRoundFormProps) {
   const router = useRouter()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [language, setLanguage] = useState(DEFAULT_DEEPGRAM_LANGUAGE)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -36,7 +38,8 @@ export function CreateRoundForm({ onSuccess }: CreateRoundFormProps) {
         },
         body: JSON.stringify({
           name: name.trim(),
-          description: description.trim() || undefined
+          description: description.trim() || undefined,
+          language
         })
       })
 
@@ -105,6 +108,25 @@ export function CreateRoundForm({ onSuccess }: CreateRoundFormProps) {
               rows={3}
               className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="language" className="text-sm font-medium">
+              Language
+            </label>
+            <select
+              id="language"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              disabled={isSubmitting}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {DEEPGRAM_LANGUAGE_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <Button

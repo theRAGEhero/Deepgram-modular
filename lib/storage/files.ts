@@ -176,3 +176,154 @@ export async function deleteRoundFiles(roundId: string): Promise<void> {
     deletedFiles
   });
 }
+
+/**
+ * Chunk management directory paths
+ */
+export const CHUNKS_DIR = path.join(DATA_DIR, 'chunks');
+
+/**
+ * Ensure chunk directory exists for a round
+ */
+export async function ensureChunkDirectory(roundId: string): Promise<string> {
+  const chunkDir = path.join(CHUNKS_DIR, roundId);
+  await fs.mkdir(chunkDir, { recursive: true });
+  return chunkDir;
+}
+
+/**
+ * Save a single audio chunk to disk
+ */
+export async function saveChunk(
+  roundId: string,
+  sequence: number,
+  buffer: Buffer
+): Promise<void> {
+  const chunkDir = await ensureChunkDirectory(roundId);
+  const filename = sequence.toString().padStart(4, '0') + '.webm';
+  const filePath = path.join(chunkDir, filename);
+  await fs.writeFile(filePath, buffer);
+
+  logger.info('Chunk saved', { roundId, sequence, size: buffer.length });
+
+  // Update manifest
+  await updateChunkManifest(roundId, sequence);
+}
+
+/**
+ * Assemble all chunks into a single audio file
+ */
+export async function assembleChunks(
+  roundId: string,
+  totalChunks: number,
+  mimeType: string
+): Promise<string> {
+  logger.info('Assembling chunks', { roundId, totalChunks });
+
+  const chunkDir = path.join(CHUNKS_DIR, roundId);
+  const extension = mimeType.split('/')[1] || 'webm';
+  const outputPath = path.join(AUDIO_DIR, `${roundId}.${extension}`);
+
+  await ensureDirectories();
+
+  // Create output file
+  const chunks: Buffer[] = [];
+
+  for (let i = 0; i < totalChunks; i++) {
+    const chunkFile = path.join(chunkDir, `${i.toString().padStart(4, '0')}.webm`);
+
+    try {
+      const chunkBuffer = await fs.readFile(chunkFile);
+      chunks.push(chunkBuffer);
+    } catch (error) {
+      logger.error('Failed to read chunk', { roundId, sequence: i, error });
+      throw new Error(`Missing chunk ${i}`);
+    }
+  }
+
+  // Concatenate all chunks
+  const finalBuffer = Buffer.concat(chunks);
+  await fs.writeFile(outputPath, finalBuffer);
+
+  logger.info('Chunks assembled successfully', { roundId, outputPath, size: finalBuffer.length });
+
+  // Delete chunk directory
+  await fs.rm(chunkDir, { recursive: true, force: true });
+
+  return `/audio/${roundId}.${extension}`;
+}
+
+interface ChunkManifest {
+  roundId: string;
+  mimeType: string;
+  totalChunks: number;
+  receivedSequences: number[];
+  startTime: number;
+  lastUpdate: number;
+}
+
+/**
+ * Update chunk manifest with a new received sequence
+ */
+export async function updateChunkManifest(
+  roundId: string,
+  sequence: number,
+  mimeType: string = 'audio/webm'
+): Promise<void> {
+  const chunkDir = path.join(CHUNKS_DIR, roundId);
+  const manifestPath = path.join(chunkDir, 'manifest.json');
+
+  let manifest: ChunkManifest;
+  try {
+    const content = await fs.readFile(manifestPath, 'utf-8');
+    manifest = JSON.parse(content);
+  } catch {
+    manifest = {
+      roundId,
+      mimeType,
+      totalChunks: 0,
+      receivedSequences: [],
+      startTime: Date.now(),
+      lastUpdate: Date.now()
+    };
+  }
+
+  if (!manifest.receivedSequences.includes(sequence)) {
+    manifest.receivedSequences.push(sequence);
+    manifest.receivedSequences.sort((a, b) => a - b);
+  }
+
+  manifest.lastUpdate = Date.now();
+  manifest.totalChunks = Math.max(manifest.totalChunks, sequence + 1);
+
+  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+}
+
+/**
+ * Get chunk manifest for a round
+ */
+export async function getChunkManifest(roundId: string): Promise<ChunkManifest | null> {
+  try {
+    const manifestPath = path.join(CHUNKS_DIR, roundId, 'manifest.json');
+    const content = await fs.readFile(manifestPath, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Find missing chunks in a sequence
+ */
+export async function findMissingChunks(roundId: string, expectedTotal: number): Promise<number[]> {
+  const manifest = await getChunkManifest(roundId);
+  if (!manifest) return Array.from({ length: expectedTotal }, (_, i) => i);
+
+  const missing: number[] = [];
+  for (let i = 0; i < expectedTotal; i++) {
+    if (!manifest.receivedSequences.includes(i)) {
+      missing.push(i);
+    }
+  }
+  return missing;
+}

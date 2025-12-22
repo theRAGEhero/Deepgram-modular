@@ -186,8 +186,10 @@ export function TranscriptionDisplay({ data, roundName }: TranscriptionDisplayPr
           )
           const speakerName = getSpeakerName(contribution.madeBy)
 
+          const contributionKey = contribution.contribution_id ?? `${contribution.madeBy}-${contribution.timestamp}-${index}`
+
           return (
-            <Card key={contribution.contribution_id} className="relative">
+            <Card key={contributionKey} className="relative">
               <CardContent className="pt-6">
                 <div className="flex items-start space-x-4">
                   <div className="flex-shrink-0">
