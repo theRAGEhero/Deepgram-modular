@@ -69,8 +69,8 @@ export function RoundCard({ round, onDelete }: RoundCardProps) {
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
-            <Link href={`/rounds/${round.id}`}>
-              <CardTitle className="hover:text-primary cursor-pointer truncate">
+            <Link href={`/rounds/${round.id}`} className="min-w-0">
+              <CardTitle className="hover:text-primary cursor-pointer line-clamp-2 break-all">
                 {round.name}
               </CardTitle>
             </Link>
@@ -87,10 +87,14 @@ export function RoundCard({ round, onDelete }: RoundCardProps) {
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
             <div className="flex items-center space-x-2 text-muted-foreground">
               <Clock className="h-4 w-4" />
               <span>{formatDuration(round.duration_seconds)}</span>
+            </div>
+            <div className="flex items-center space-x-2 text-muted-foreground">
+              <span className="font-medium">Lang:</span>
+              <span>{round.language || 'en'}</span>
             </div>
             {round.speaker_count !== undefined && (
               <div className="flex items-center space-x-2 text-muted-foreground">

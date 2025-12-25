@@ -249,8 +249,8 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
           </Link>
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center space-x-3 mb-2">
-                <h1 className="text-4xl font-bold">{round.name}</h1>
+              <div className="flex flex-wrap items-center gap-3 mb-2 min-w-0">
+                <h1 className="text-4xl font-bold break-all">{round.name}</h1>
                 <Badge variant={getStatusVariant(round.status)}>
                   {getStatusLabel(round.status)}
                 </Badge>
@@ -262,6 +262,9 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
               )}
               <p className="text-sm text-muted-foreground mt-2">
                 Created {formatDate(round.created_at)}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Language: <span className="font-medium text-foreground">{round.language || 'en'}</span>
               </p>
             </div>
             <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start">
