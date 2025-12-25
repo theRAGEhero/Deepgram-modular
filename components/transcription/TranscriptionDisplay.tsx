@@ -186,7 +186,7 @@ export function TranscriptionDisplay({ data, roundName }: TranscriptionDisplayPr
           )
           const speakerName = getSpeakerName(contribution.madeBy)
 
-          const contributionKey = contribution.contribution_id ?? `${contribution.madeBy}-${contribution.timestamp}-${index}`
+          const contributionKey = contribution.identifier ?? `${contribution.madeBy}-${contribution.timestamp}-${index}`
 
           return (
             <Card key={contributionKey} className="relative">

@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       width: 320
     });
 
-    return new NextResponse(pngBuffer, {
+    return new NextResponse(new Uint8Array(pngBuffer), {
       headers: {
         'Content-Type': 'image/png',
         'Cache-Control': 'public, max-age=3600'
