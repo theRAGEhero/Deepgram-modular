@@ -11,8 +11,10 @@ import { AudioRecorder } from '@/components/recording/AudioRecorder'
 import { FileUploader } from '@/components/upload/FileUploader'
 import { Progress } from '@/components/ui/progress'
 import { TranscriptionDisplay } from '@/components/transcription/TranscriptionDisplay'
+import { LiveTranscriptionDisplay } from '@/components/transcription/LiveTranscriptionDisplay'
 import { Round, RoundStatus } from '@/types/round'
 import { DeliberationOntology } from '@/types/deliberation'
+import { LiveTranscriptSegment } from '@/types/live-transcription'
 
 export default function RoundDetailPage({ params }: { params: { roundId: string } }) {
   const router = useRouter()
@@ -21,10 +23,12 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [processError, setProcessError] = useState<string | null>(null)
-  const [audioSource, setAudioSource] = useState<'record' | 'upload' | null>(null)
+  const [audioSource, setAudioSource] = useState<'record-live' | 'record' | 'upload' | null>(null)
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingProgress, setProcessingProgress] = useState(0)
+  const [liveSegments, setLiveSegments] = useState<LiveTranscriptSegment[]>([])
+  const [livePartial, setLivePartial] = useState<LiveTranscriptSegment | null>(null)
 
   const fetchRoundData = async () => {
     setIsLoading(true)
@@ -99,6 +103,15 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
   const handleProcessUpload = () => {
     if (audioFile) {
       processAudio(audioFile)
+    }
+  }
+
+  const handleLiveTranscript = (segment: LiveTranscriptSegment) => {
+    if (segment.isFinal) {
+      setLiveSegments(prev => [...prev, segment])
+      setLivePartial(null)
+    } else {
+      setLivePartial(segment)
     }
   }
 
@@ -322,12 +335,18 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
 
         {(round.status === RoundStatus.CREATED || round.status === RoundStatus.ERROR) && !isProcessing && (
           <div className="space-y-6 mb-8">
-            <div className="flex items-center justify-center space-x-4">
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button
+                variant={audioSource === 'record-live' ? 'default' : 'outline'}
+                onClick={() => setAudioSource('record-live')}
+              >
+                Live Record
+              </Button>
               <Button
                 variant={audioSource === 'record' ? 'default' : 'outline'}
                 onClick={() => setAudioSource('record')}
               >
-                Record Audio
+                Record (No Live)
               </Button>
               <span className="text-muted-foreground">or</span>
               <Button
@@ -338,11 +357,18 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
               </Button>
             </div>
 
-            {audioSource === 'record' && (
-              <AudioRecorder
-                onRecordingComplete={handleRecordingComplete}
-                roundId={round.id}
-              />
+            {(audioSource === 'record-live' || audioSource === 'record') && (
+              <div className="space-y-6">
+                <AudioRecorder
+                  onRecordingComplete={handleRecordingComplete}
+                  onLiveTranscript={handleLiveTranscript}
+                  liveTranscriptionEnabled={audioSource === 'record-live'}
+                  roundId={round.id}
+                />
+                {audioSource === 'record-live' && (
+                  <LiveTranscriptionDisplay segments={liveSegments} partial={livePartial} />
+                )}
+              </div>
             )}
 
             {audioSource === 'upload' && (
@@ -377,6 +403,18 @@ export default function RoundDetailPage({ params }: { params: { roundId: string 
               </p>
             </div>
           </div>
+        )}
+
+        {round.audio_file && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Recording</CardTitle>
+              <CardDescription>Playback of the saved audio file</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <audio controls src={round.audio_file} className="w-full" />
+            </CardContent>
+          </Card>
         )}
 
         {/* Transcription Display */}

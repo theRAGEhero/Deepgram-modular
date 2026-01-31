@@ -2,7 +2,7 @@ const { createServer } = require('http')
 const { parse } = require('url')
 const next = require('next')
 const WebSocket = require('ws')
-const { handleConnection, getSessionStats } = require('./lib/websocket/handler.js')
+const { handleConnection, getSessionStats, getLiveTranscription } = require('./lib/websocket/handler.js')
 
 const dev = process.env.NODE_ENV !== 'production'
 const hostname = 'localhost'
@@ -20,6 +20,21 @@ app.prepare().then(() => {
         res.statusCode = 200
         res.setHeader('Content-Type', 'application/json')
         res.end(JSON.stringify(stats))
+        return
+      }
+      const liveMatch = parsedUrl.pathname?.match(/^\/api\/rounds\/([^/]+)\/live-transcript$/)
+      if (liveMatch && req.method === 'GET') {
+        const roundId = liveMatch[1]
+        const transcript = getLiveTranscription(roundId)
+        if (!transcript) {
+          res.statusCode = 404
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'Live transcript not found' }))
+          return
+        }
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify(transcript))
         return
       }
       await handle(req, res, parsedUrl)

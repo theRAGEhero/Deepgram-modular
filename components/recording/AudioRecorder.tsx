@@ -5,14 +5,23 @@ import { Mic, Square, Pause, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { LiveTranscriptSegment } from '@/types/live-transcription'
 
 interface AudioRecorderProps {
   onRecordingComplete: (audioBlob: Blob, duration: number) => void
+  onLiveTranscript?: (segment: LiveTranscriptSegment) => void
+  liveTranscriptionEnabled?: boolean
   disabled?: boolean
   roundId: string
 }
 
-export function AudioRecorder({ onRecordingComplete, disabled = false, roundId }: AudioRecorderProps) {
+export function AudioRecorder({
+  onRecordingComplete,
+  onLiveTranscript,
+  liveTranscriptionEnabled = true,
+  disabled = false,
+  roundId
+}: AudioRecorderProps) {
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [duration, setDuration] = useState(0)
@@ -29,6 +38,7 @@ export function AudioRecorder({ onRecordingComplete, disabled = false, roundId }
   const sequenceRef = useRef<number>(0)
   const chunkBufferRef = useRef<Array<{ sequence: number, data: Blob }>>([])
   const reconnectAttemptsRef = useRef<number>(0)
+  const sendQueueRef = useRef<Promise<void>>(Promise.resolve())
 
   useEffect(() => {
     return () => {
@@ -75,7 +85,7 @@ export function AudioRecorder({ onRecordingComplete, disabled = false, roundId }
     const ws = new WebSocket(`ws://localhost:3000/api/stream-audio`)
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'init', roundId, mimeType }))
+      ws.send(JSON.stringify({ type: 'init', roundId, mimeType, liveEnabled: liveTranscriptionEnabled }))
     }
 
     ws.onmessage = (event) => {
@@ -85,10 +95,14 @@ export function AudioRecorder({ onRecordingComplete, disabled = false, roundId }
         setConnectionStatus('connected')
         reconnectAttemptsRef.current = 0
         // Send any buffered chunks
-        chunkBufferRef.current.forEach(({ sequence, data }) => {
-          streamChunk(data, sequence)
-        })
+        const buffered = [...chunkBufferRef.current].sort((a, b) => a.sequence - b.sequence)
         chunkBufferRef.current = []
+        buffered.forEach(({ sequence, data }) => {
+          enqueueChunk(data, sequence)
+        })
+      } else if (message.type === 'live_transcript' && message.segment) {
+        console.log('[Recorder] Live transcript segment', message.segment)
+        onLiveTranscript?.(message.segment)
       } else if (message.type === 'ack') {
         // Chunk acknowledged
       } else if (message.type === 'missing') {
@@ -96,7 +110,7 @@ export function AudioRecorder({ onRecordingComplete, disabled = false, roundId }
         message.sequences.forEach((seq: number) => {
           const buffered = chunkBufferRef.current.find(c => c.sequence === seq)
           if (buffered) {
-            streamChunk(buffered.data, buffered.sequence)
+            enqueueChunk(buffered.data, buffered.sequence)
           }
         })
       } else if (message.type === 'error') {
@@ -120,18 +134,20 @@ export function AudioRecorder({ onRecordingComplete, disabled = false, roundId }
     wsRef.current = ws
   }
 
-  const streamChunk = (data: Blob, sequence: number) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return
-
-    data.arrayBuffer().then(buffer => {
+  const enqueueChunk = (data: Blob, sequence: number) => {
+    sendQueueRef.current = sendQueueRef.current.then(async () => {
+      if (wsRef.current?.readyState !== WebSocket.OPEN) return
+      wsRef.current.send(JSON.stringify({
+        type: 'chunk',
+        sequence,
+        timestamp: Date.now()
+      }))
+      const buffer = await data.arrayBuffer()
       if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'chunk',
-          sequence,
-          timestamp: Date.now()
-        }))
         wsRef.current.send(buffer)
       }
+    }).catch(error => {
+      console.error('[Recorder] Failed to send chunk', error)
     })
   }
 
@@ -198,9 +214,9 @@ export function AudioRecorder({ onRecordingComplete, disabled = false, roundId }
         if (event.data.size > 0) {
           chunksRef.current.push(event.data)
 
-          // Stream chunk via WebSocket if connected
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            streamChunk(event.data, sequenceRef.current++)
+          // Stream chunk via WebSocket only after server is ready
+          if (wsRef.current?.readyState === WebSocket.OPEN && connectionStatus === 'connected') {
+            enqueueChunk(event.data, sequenceRef.current++)
           } else {
             // Buffer for later if disconnected
             chunkBufferRef.current.push({

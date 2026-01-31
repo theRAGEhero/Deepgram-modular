@@ -5,7 +5,7 @@ Audio recording and transcription platform using Deepgram API and Next.js.
 ## Features
 
 - **Audio Recording**: Browser-based audio recording with real-time duration tracking
-- **Transcription**: Automatic transcription using Deepgram's prerecorded API
+- **Transcription**: Real-time transcription with diarization plus a batch fallback
 - **Deliberation Ontology**: Structured output with speakers, contributions, and statistics
 - **Round Management**: Create, track, and manage deliberation rounds
 - **File Storage**: Local storage for audio files and transcription JSON
@@ -39,11 +39,28 @@ Audio recording and transcription platform using Deepgram API and Next.js.
 
 6. Open [http://localhost:3000](http://localhost:3000) in your browser
 
+## Docker
+
+1. Create `.env.local` from template:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. Add your Deepgram API key in `.env.local`.
+
+3. Build and run:
+   ```bash
+   docker compose up --build
+   ```
+
+4. Open [http://localhost:3000](http://localhost:3000)
+
 ## Environment Variables
 
 See `.env.example` for required configuration:
 
 - `DEEPGRAM_API_KEY`: Your Deepgram API key (required)
+- `DEEPGRAM_LIVE_ENABLED`: Enable live transcription (default: true)
 - `NEXT_PUBLIC_MAX_FILE_SIZE`: Maximum upload file size in bytes (default: 100MB)
 - `NEXT_PUBLIC_ALLOWED_MEDIA_TYPES`: Comma-separated list of allowed media types
 - `LOG_LEVEL`: Logging level (debug, info, warn, error)
@@ -54,7 +71,7 @@ See `.env.example` for required configuration:
 
 1. **Create a Round**: Navigate to "New Round" and enter round details
 2. **Record Audio**: Use the built-in recorder or upload an audio/video file
-3. **Transcription**: Audio is automatically transcribed using Deepgram
+3. **Transcription**: Live transcription appears during recording; final JSON is created from live output (fallback to batch if live fails)
 4. **View Results**: See transcription with speaker identification and statistics
 
 ## Project Structure
@@ -94,7 +111,10 @@ The `.gitignore` file is configured to exclude:
 - `POST /api/rounds` - Create new round
 - `GET /api/rounds/[roundId]` - Get round details
 - `GET /api/rounds/[roundId]/transcription` - Get round transcription
+- `GET /api/rounds/[roundId]/qr` - QR code for a round
+- `GET /api/rounds/[roundId]/live-transcript` - Live transcript snapshot
 - `PATCH /api/rounds/[roundId]` - Update round
+- `GET /api/stream-audio/stats` - WebSocket session stats (Node server)
 
 ## Technologies
 

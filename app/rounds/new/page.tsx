@@ -11,20 +11,26 @@ import { AudioRecorder } from '@/components/recording/AudioRecorder'
 import { FileUploader } from '@/components/upload/FileUploader'
 import { Progress } from '@/components/ui/progress'
 import { RoundStatus } from '@/types/round'
+import { LiveTranscriptionDisplay } from '@/components/transcription/LiveTranscriptionDisplay'
+import { LiveTranscriptSegment } from '@/types/live-transcription'
 
 export default function NewRoundPage() {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState<'create' | 'audio' | 'processing'>('create')
   const [roundId, setRoundId] = useState<string | null>(null)
-  const [audioSource, setAudioSource] = useState<'record' | 'upload' | null>(null)
+  const [audioSource, setAudioSource] = useState<'record-live' | 'record' | 'upload' | null>(null)
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingProgress, setProcessingProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [liveSegments, setLiveSegments] = useState<LiveTranscriptSegment[]>([])
+  const [livePartial, setLivePartial] = useState<LiveTranscriptSegment | null>(null)
 
   const handleRoundCreated = (newRoundId: string) => {
     setRoundId(newRoundId)
     setCurrentStep('audio')
+    setLiveSegments([])
+    setLivePartial(null)
   }
 
   const handleRecordingComplete = (audioBlob: Blob, duration: number) => {
@@ -35,6 +41,15 @@ export default function NewRoundPage() {
     )
     setAudioFile(file)
     processAudio(file, duration)
+  }
+
+  const handleLiveTranscript = (segment: LiveTranscriptSegment) => {
+    if (segment.isFinal) {
+      setLiveSegments(prev => [...prev, segment])
+      setLivePartial(null)
+    } else {
+      setLivePartial(segment)
+    }
   }
 
   const handleFileSelect = (file: File) => {
@@ -180,12 +195,18 @@ export default function NewRoundPage() {
               </Card>
             )}
 
-            <div className="flex items-center justify-center space-x-4 mb-8">
+            <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
+              <Button
+                variant={audioSource === 'record-live' ? 'default' : 'outline'}
+                onClick={() => setAudioSource('record-live')}
+              >
+                Live Record
+              </Button>
               <Button
                 variant={audioSource === 'record' ? 'default' : 'outline'}
                 onClick={() => setAudioSource('record')}
               >
-                Record Audio
+                Record (No Live)
               </Button>
               <span className="text-muted-foreground">or</span>
               <Button
@@ -196,12 +217,19 @@ export default function NewRoundPage() {
               </Button>
             </div>
 
-            {audioSource === 'record' && (
-              <AudioRecorder
-                onRecordingComplete={handleRecordingComplete}
-                roundId={roundId || ''}
-                disabled={!roundId}
-              />
+            {(audioSource === 'record-live' || audioSource === 'record') && (
+              <div className="space-y-6">
+                <AudioRecorder
+                  onRecordingComplete={handleRecordingComplete}
+                  onLiveTranscript={handleLiveTranscript}
+                  liveTranscriptionEnabled={audioSource === 'record-live'}
+                  roundId={roundId || ''}
+                  disabled={!roundId}
+                />
+                {audioSource === 'record-live' && (
+                  <LiveTranscriptionDisplay segments={liveSegments} partial={livePartial} />
+                )}
+              </div>
             )}
 
             {audioSource === 'upload' && (

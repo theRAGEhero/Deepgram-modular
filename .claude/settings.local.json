@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(cd:*)",
+      "Bash(npx create-next-app@latest Deepgram-modular --typescript --tailwind --app --no-src-dir --import-alias \"@/*\" --use-npm --skip-install)",
+      "Bash(npm install)",
+      "Bash(cd /home/ale/DemocracyCloud/GH\\ -\\ Repos/Deepgram-modular && npm run dev:*)",
+      "Bash(ls -la \"/home/ale/DemocracyCloud/GH - Repos/Deepgram-modular/.env\"*)",
+      "Bash(npm info:*)",
+      "Bash(ls:*)",
+      "Bash(gemini --help:*)",
+      "Bash(gemini extensions:*)",
+      "WebSearch",
+      "WebFetch(domain:developers.deepgram.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(xargs ls:*)",
+      "WebFetch(domain:ai.google.dev)",
+      "Bash(npx create-next-app@latest analyze-tables-modular --typescript --tailwind --app --no-src-dir --import-alias \"@/*\" --use-npm --skip-install)",
+      "Bash(npm install:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(grep:*)",
+      "Bash(pkill:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "calcom"
+  ]
+}
